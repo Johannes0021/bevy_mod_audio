@@ -208,6 +208,7 @@ impl AudioPlayer {
         let Some(player) = self.player.take() else {
             return;
         };
+        self.in_player_queue = 0;
 
         self.is_paused = player.is_paused();
         self.volume = player.volume();
