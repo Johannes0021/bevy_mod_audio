@@ -70,7 +70,6 @@ pub struct AudioContextDescriptor {
     pub device: AudioContextDevice,
     pub rebuild: AudioContextRebuild,
     pub error_callback: AudioContextErrorCallback,
-    pub connect: bool,
 }
 
 impl Default for AudioContextDescriptor {
@@ -81,7 +80,6 @@ impl Default for AudioContextDescriptor {
             },
             device: AudioContextDevice::Default,
             error_callback: AudioContextConnectionError::default_error_callback,
-            connect: true,
         }
     }
 }
@@ -145,16 +143,9 @@ impl AudioContext {
     ) -> Result<(), String> {
         self.needs_rebuild.store(false, Ordering::SeqCst);
 
-        let connect_tmp = self.desc.connect;
         self.disconnect(audio_players);
 
-        let result = if connect_tmp {
-            self.connect(audio_players)
-        } else {
-            Ok(())
-        };
-        self.desc.connect = connect_tmp;
-
+        let result = self.connect(audio_players);
         if let Err(e) = &result {
             (self.desc.error_callback)(AudioContextConnectionError::RebuildFailed(e.clone()));
         }
@@ -162,10 +153,15 @@ impl AudioContext {
         result
     }
 
-    fn connect(&mut self, audio_players: &mut Query<&mut AudioPlayer>) -> Result<(), String> {
+    pub(super) fn connect(
+        &mut self,
+        audio_players: &mut Query<&mut AudioPlayer>,
+    ) -> Result<(), String> {
         if self.is_connected() {
             return Ok(());
         }
+
+        self.needs_rebuild.store(false, Ordering::SeqCst);
 
         let mixer_device_sink = match &self.desc.device {
             AudioContextDevice::Default => self.create_mixer_device_sink_from_default_device(),
@@ -275,7 +271,7 @@ impl AudioContext {
         })
     }
 
-    fn disconnect(&mut self, audio_players: &mut Query<&mut AudioPlayer>) {
+    pub(super) fn disconnect(&mut self, audio_players: &mut Query<&mut AudioPlayer>) {
         if !self.is_connected() {
             return;
         }
@@ -285,6 +281,7 @@ impl AudioContext {
         }
 
         self.mixer_device_sink = None;
+        self.needs_rebuild.store(false, Ordering::SeqCst);
     }
 
     fn is_connected(&self) -> bool {

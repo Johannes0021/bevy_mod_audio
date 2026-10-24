@@ -24,7 +24,6 @@ pub mod prelude {
         },
         audio_player::{
             AudioPlayer, QueuedAudioSource, QueuedAudioSourceFromPosition, QueuedAudioSourceResult,
-            ResumePlaybackPolicy, SuspendPlaybackPolicy,
         },
         audio_source::{AudioLoader, AudioSource},
     };
@@ -55,7 +54,8 @@ impl Plugin for AudioPlugin {
 }
 
 fn on_lifecycle(
-    audio_players: Query<&mut AudioPlayer>,
+    mut audio_context: ResMut<AudioContext>,
+    mut audio_players: Query<&mut AudioPlayer>,
     mut lifecycle_messages: MessageReader<AppLifecycle>,
     mut running: Local<bool>,
 ) {
@@ -71,13 +71,17 @@ fn on_lifecycle(
 
     if *running != last_running {
         if *running {
+            if let Err(e) = audio_context.connect(&mut audio_players) {
+                error!("Failed to connect the audio context: {e}");
+            }
             for mut audio_player in audio_players {
                 audio_player.on_resume();
             }
         } else {
-            for mut audio_player in audio_players {
+            for mut audio_player in &mut audio_players {
                 audio_player.on_suspend();
             }
+            audio_context.disconnect(&mut audio_players);
         }
     }
 }

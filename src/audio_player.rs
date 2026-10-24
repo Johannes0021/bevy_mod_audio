@@ -5,26 +5,6 @@ use rodio::{Player, Source, mixer::Mixer, source::SeekError};
 use std::time::Duration;
 
 //==================================================================================================
-// SuspendPlaybackPolicy
-//==================================================================================================
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum SuspendPlaybackPolicy {
-    DoNothing,
-    Pause,
-}
-
-//==================================================================================================
-// ResumePlaybackPolicy
-//==================================================================================================
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ResumePlaybackPolicy {
-    DoNothing,
-    PlayIfPausedOnSuspend,
-}
-
-//==================================================================================================
 // QueuedAudioSource
 //==================================================================================================
 
@@ -151,14 +131,7 @@ pub struct AudioPlayer {
     try_seek: Duration,
     volume: f32,
     speed: f32,
-    suspend_policy: SuspendPlaybackPolicy,
-    resume_policy: ResumePlaybackPolicy,
     is_paused: bool,
-    /// Tracks whether playback was automatically paused due to app suspension.
-    ///
-    /// This flag is set when [`SuspendPlaybackPolicy::Pause`] pauses playback and is used by
-    /// [`ResumePlaybackPolicy::PlayIfPausedOnSuspend`] to determine whether the player should
-    /// automatically resume when the app becomes active again.
     is_paused_by_suspend: bool,
 }
 
@@ -170,8 +143,6 @@ impl Default for AudioPlayer {
             try_seek: Duration::ZERO,
             volume: 1.0,
             speed: 1.0,
-            suspend_policy: SuspendPlaybackPolicy::Pause,
-            resume_policy: ResumePlaybackPolicy::PlayIfPausedOnSuspend,
             is_paused: false,
             is_paused_by_suspend: false,
         }
@@ -236,30 +207,19 @@ impl AudioPlayer {
     }
 
     pub(super) fn on_resume(&mut self) {
-        match self.resume_policy {
-            ResumePlaybackPolicy::DoNothing => (),
-            ResumePlaybackPolicy::PlayIfPausedOnSuspend => {
-                if self.is_paused_by_suspend() {
-                    self.play();
-                }
-            }
+        if self.is_paused_by_suspend() {
+            self.play();
         }
-
         self.is_paused_by_suspend = false;
     }
 
     pub(super) fn on_suspend(&mut self) {
-        match self.suspend_policy {
-            SuspendPlaybackPolicy::DoNothing => (),
-            SuspendPlaybackPolicy::Pause => {
-                if self.is_playing() {
-                    self.pause();
+        if self.is_playing() {
+            self.pause();
 
-                    // Must set this flag after calling `self.pause()`,
-                    // because `pause()` resets it to false.
-                    self.is_paused_by_suspend = true;
-                }
-            }
+            // Must set this flag after calling `self.pause()`,
+            // because `pause()` resets it to false.
+            self.is_paused_by_suspend = true;
         }
     }
 
@@ -470,32 +430,6 @@ impl AudioPlayer {
 
     pub fn is_paused_by_suspend(&self) -> bool {
         self.is_paused_by_suspend
-    }
-
-    pub fn with_suspend_policy(mut self, policy: SuspendPlaybackPolicy) -> Self {
-        self.set_suspend_policy(policy);
-        self
-    }
-
-    pub fn set_suspend_policy(&mut self, policy: SuspendPlaybackPolicy) {
-        self.suspend_policy = policy;
-    }
-
-    pub fn suspend_policy(&self) -> SuspendPlaybackPolicy {
-        self.suspend_policy
-    }
-
-    pub fn with_resume_policy(mut self, policy: ResumePlaybackPolicy) -> Self {
-        self.set_resume_policy(policy);
-        self
-    }
-
-    pub fn set_resume_policy(&mut self, policy: ResumePlaybackPolicy) {
-        self.resume_policy = policy;
-    }
-
-    pub fn resume_policy(&self) -> ResumePlaybackPolicy {
-        self.resume_policy
     }
 
     pub fn try_seek(&mut self, position: Duration) -> Result<(), SeekError> {
