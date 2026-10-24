@@ -19,8 +19,9 @@ fn main() {
 }
 
 fn startup(mut commands: Commands) {
+    // There are also fns for playing audio from a file.
     commands.spawn(AudioPlayer::new().with_append(|position| {
-        // Construct a dynamic controller and mixer, stream_handle, and player.
+        // Construct a dynamic controller and mixer.
         let (controller, mixer) = mixer::mixer(
             ChannelCount::new(2).unwrap(),
             SampleRate::new(44_100).unwrap(),
@@ -53,6 +54,7 @@ fn startup(mut commands: Commands) {
             source: mixer,
             total_duration: Some(NOTE_DURATION),
         }
+        // This is important for the audio context rebuild.
         .seek_or_skip_duration(position);
 
         Ok(queued_source)
