@@ -95,16 +95,6 @@ fn update(
 ) {
     let delta = time.delta();
 
-    let mixer = audio_context.mixer();
-    for mut audio_player in &mut audio_players {
-        if let Some(mixer) = &mixer
-            && !audio_player.is_connected()
-        {
-            audio_player.connect(mixer);
-        }
-        audio_player.update(&audio_sources);
-    }
-
     if audio_context.needs_rebuild(delta) {
         if *init_rebuild_done {
             info!("About to rebuild the audio context.");
@@ -113,5 +103,15 @@ fn update(
             error!("Failed to rebuild the audio context: {e}");
         }
         *init_rebuild_done = true;
+    }
+
+    let mixer = audio_context.mixer();
+    for mut audio_player in &mut audio_players {
+        if let Some(mixer) = &mixer
+            && !audio_player.is_connected()
+        {
+            audio_player.connect(mixer);
+        }
+        audio_player.update(&audio_sources);
     }
 }

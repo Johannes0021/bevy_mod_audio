@@ -140,7 +140,7 @@ pub type QueuedAudioSourceFromPosition = Box<
 pub struct AudioPlayer {
     player: Option<Player>,
     queue: Vec<QueuedAudioSourceFromPosition>,
-    try_seek: Duration,
+    current_start_position: Duration,
     in_player_queue: usize,
     volume: f32,
     speed: f32,
@@ -153,7 +153,7 @@ impl Default for AudioPlayer {
         Self {
             player: None,
             queue: Vec::new(),
-            try_seek: Duration::ZERO,
+            current_start_position: Duration::ZERO,
             in_player_queue: 0,
             volume: 1.0,
             speed: 1.0,
@@ -213,7 +213,7 @@ impl AudioPlayer {
         self.is_paused = player.is_paused();
         self.volume = player.volume();
         self.speed = player.speed();
-        self.try_seek += player.get_pos();
+        self.current_start_position += player.get_pos();
     }
 
     pub(super) fn is_connected(&self) -> bool {
@@ -250,7 +250,7 @@ impl AudioPlayer {
         if self.in_player_queue < self.queue.len() {
             for (idx, load_source) in self.queue.iter_mut().skip(self.in_player_queue).enumerate() {
                 let position = if idx == 0 {
-                    self.try_seek
+                    self.current_start_position
                 } else {
                     Duration::ZERO
                 };
@@ -283,7 +283,7 @@ impl AudioPlayer {
         if to_remove > 0 {
             self.queue.drain(0..to_remove);
             self.in_player_queue = self.in_player_queue.saturating_sub(already_played);
-            self.try_seek = Duration::ZERO;
+            self.current_start_position = Duration::ZERO;
         }
     }
 
@@ -540,12 +540,12 @@ impl AudioPlayer {
             let result = player.try_seek(position);
 
             if result.is_ok() {
-                self.try_seek = Duration::ZERO;
+                self.current_start_position = Duration::ZERO;
             }
 
             result
         } else {
-            self.try_seek = position;
+            self.current_start_position = position;
             Ok(())
         }
     }
@@ -555,7 +555,7 @@ impl AudioPlayer {
 
         self.player
             .as_ref()
-            .map(|player| self.try_seek + player.get_pos())
-            .unwrap_or(self.try_seek)
+            .map(|player| self.current_start_position + player.get_pos())
+            .unwrap_or(self.current_start_position)
     }
 }
