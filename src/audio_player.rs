@@ -196,13 +196,13 @@ impl AudioPlayer {
             return;
         };
 
-        self.is_paused = player.is_paused();
+        self.try_seek += player.get_pos();
         self.volume = player.volume();
         self.speed = player.speed();
-        self.try_seek += player.get_pos();
+        self.is_paused = player.is_paused();
     }
 
-    fn is_connected(&self) -> bool {
+    pub(super) fn is_connected(&self) -> bool {
         self.player.is_some()
     }
 

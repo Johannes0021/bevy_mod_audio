@@ -7,6 +7,7 @@ use rodio::{
         self,
         traits::{DeviceTrait, HostTrait},
     },
+    mixer::Mixer,
     stream::{DeviceSinkConfig, DeviceSinkError},
 };
 use std::{
@@ -113,6 +114,13 @@ impl AudioContext {
 
     pub fn descriptor(&self) -> &AudioContextDescriptor {
         &self.desc
+    }
+
+    pub(super) fn mixer(&self) -> Option<Mixer> {
+        self.mixer_device_sink.as_ref().map(|os| {
+            let os_guard = os.lock().unwrap();
+            os_guard.mixer().clone()
+        })
     }
 
     pub fn device_sink_config(&self) -> Option<DeviceSinkConfig> {

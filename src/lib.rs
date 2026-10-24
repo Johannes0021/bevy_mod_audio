@@ -94,7 +94,13 @@ fn update(
 ) {
     let delta = time.delta();
 
+    let mixer = audio_context.mixer();
     for mut audio_player in &mut audio_players {
+        if let Some(mixer) = &mixer
+            && !audio_player.is_connected()
+        {
+            audio_player.connect(mixer);
+        }
         audio_player.update();
     }
 
