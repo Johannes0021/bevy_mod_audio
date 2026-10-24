@@ -40,10 +40,7 @@ pub struct AudioPlugin {
 impl Plugin for AudioPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(AudioContext::new(self.audio_context_descriptor.clone()))
-            .add_systems(
-                PostUpdate,
-                (on_lifecycle, update).chain().in_set(AudioSystems),
-            );
+            .add_systems(PostUpdate, update.in_set(AudioSystems));
 
         #[cfg(any(feature = "mp3", feature = "flac", feature = "wav", feature = "vorbis"))]
         {
@@ -53,12 +50,16 @@ impl Plugin for AudioPlugin {
     }
 }
 
-fn on_lifecycle(
+fn update(
+    time: Res<Time>,
     mut audio_context: ResMut<AudioContext>,
+    audio_sources: Res<Assets<AudioSource>>,
     mut audio_players: Query<&mut AudioPlayer>,
     mut lifecycle_messages: MessageReader<AppLifecycle>,
     mut running: Local<bool>,
+    mut init_rebuild_done: Local<bool>,
 ) {
+    let delta = time.delta();
     let last_running = *running;
 
     for msg in lifecycle_messages.read() {
@@ -74,7 +75,7 @@ fn on_lifecycle(
             if let Err(e) = audio_context.connect(&mut audio_players) {
                 error!("Failed to connect the audio context: {e}");
             }
-            for mut audio_player in audio_players {
+            for mut audio_player in &mut audio_players {
                 audio_player.on_resume();
             }
         } else {
@@ -84,16 +85,6 @@ fn on_lifecycle(
             audio_context.disconnect(&mut audio_players);
         }
     }
-}
-
-fn update(
-    time: Res<Time>,
-    mut audio_context: ResMut<AudioContext>,
-    audio_sources: Res<Assets<AudioSource>>,
-    mut audio_players: Query<&mut AudioPlayer>,
-    mut init_rebuild_done: Local<bool>,
-) {
-    let delta = time.delta();
 
     if audio_context.needs_rebuild(delta) {
         if *init_rebuild_done {
