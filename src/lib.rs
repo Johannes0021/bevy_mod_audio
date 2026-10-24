@@ -57,7 +57,7 @@ fn update(
     mut audio_players: Query<&mut AudioPlayer>,
     mut lifecycle_messages: MessageReader<AppLifecycle>,
     mut running: Local<bool>,
-    mut init_rebuild_done: Local<bool>,
+    mut log_init_rebuild: Local<bool>,
 ) {
     let delta = time.delta();
     let last_running = *running;
@@ -86,15 +86,15 @@ fn update(
         }
     }
 
-    if audio_context.needs_rebuild(delta) {
-        if *init_rebuild_done {
+    if *running && audio_context.needs_rebuild(delta) {
+        if *log_init_rebuild {
             info!("About to rebuild the audio context.");
         }
         if let Err(e) = audio_context.rebuild(&mut audio_players) {
             error!("Failed to rebuild the audio context: {e}");
         }
-        *init_rebuild_done = true;
     }
+    *log_init_rebuild = true;
 
     let mixer = audio_context.mixer();
     for mut audio_player in &mut audio_players {
