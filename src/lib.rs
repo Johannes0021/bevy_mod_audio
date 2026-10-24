@@ -39,13 +39,13 @@ pub struct AudioPlugin {
 
 impl Plugin for AudioPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(AudioContext::new(self.audio_context_descriptor.clone()))
+        app.init_asset::<AudioSource>()
+            .insert_resource(AudioContext::new(self.audio_context_descriptor.clone()))
             .add_systems(PostUpdate, update.in_set(AudioSystems));
 
         #[cfg(any(feature = "mp3", feature = "flac", feature = "wav", feature = "vorbis"))]
         {
-            app.init_asset::<AudioSource>()
-                .init_asset_loader::<AudioLoader>();
+            app.init_asset_loader::<AudioLoader>();
         }
     }
 }
