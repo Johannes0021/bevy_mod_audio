@@ -1,0 +1,33 @@
+[package]
+name = "bevy_mod_audio"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+default = ["vorbis"]
+aac = ["rodio/symphonia-aac"]
+flac = ["rodio/claxon"]
+mp3 = ["rodio/mp3"]
+mp4 = ["rodio/mp4"]
+symphonia-flac = ["rodio/flac"]
+symphonia-vorbis = ["rodio/vorbis"]
+symphonia-wav = ["rodio/wav"]
+tracing = ["rodio/tracing"]
+vorbis = ["rodio/lewton"]
+wav = ["rodio/hound"]
+
+[dependencies]
+bevy_app = { version = "0.20.0", default-features = false }
+bevy_asset = { version = "0.20.0", default-features = false }
+bevy_ecs = { version = "0.20.0", default-features = false }
+bevy_log = { version = "0.20.0", default-features = false }
+bevy_reflect = { version = "0.20.0", default-features = false }
+bevy_time = { version = "0.20.0", default-features = false }
+bevy_window = { version = "0.20.0", default-features = false, features = ["std"] }
+rodio = { version = "0.23.0", default-features = false, features = ["playback"] }
+
+[dev-dependencies]
+bevy = { version = "0.20.0", default-features = false, features = ["2d"] }
+
+[[example]]
+name = "hello_world"
