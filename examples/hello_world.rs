@@ -51,7 +51,7 @@ fn startup(mut commands: Commands) {
         info!("beep with position: {:?}", position);
         let queued_source = QueuedAudioSource {
             source: mixer,
-            total_duration: Some(Duration::from_secs_f32(1.)),
+            total_duration: Some(NOTE_DURATION),
         }
         .seek_or_skip_duration(position);
 

@@ -309,19 +309,3 @@ fn mixer_device_sink_error_callback(
     rebuild.store(true, Ordering::SeqCst);
     error_callback(AudioContextConnectionError::Cpal(cpal_error));
 }
-
-/*
-impl AudioContext {
-    pub fn new_speaker(&mut self, desc: SpeakerDescriptor) -> Handle {
-        let mut speaker = Speaker::new_disconnected(desc);
-
-        if let Some(output_stream) = &self.output_stream {
-            let os_guard = output_stream.lock().unwrap();
-            let mixer = os_guard.mixer();
-            speaker.connect(mixer);
-        }
-
-        self.speakers.insert(speaker)
-    }
-}
-*/
