@@ -1,5 +1,3 @@
-This is a wip
-
 This plugin is a workaround for the audio issues described in:
 https://github.com/bevyengine/bevy/issues/26282
 
@@ -9,8 +7,6 @@ https://github.com/bevyengine/bevy/issues/26282
 2. The app is killed in the background because the audio thread uses too much CPU power.
     - Resolved in this plugin
     - Downside: Tear down full audio backend on suspend and rebuild on resume
-
-TODO: The AudioSource append fns in AudioPlayer should take with Handle<AudioSource>.
 
 # Usage
 Disable the `audio` feature in bevy and add this `AudioPlugin` instead.

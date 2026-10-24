@@ -1,4 +1,5 @@
 use super::audio_source::AudioSource;
+use bevy_asset::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::prelude::*;
 use rodio::{Player, Source, mixer::Mixer, source::SeekError};
@@ -99,11 +100,14 @@ where
 }
 
 //==================================================================================================
-// QueuedAudioSourceResult
+// QueuedAudioSourceState
 //==================================================================================================
 
-pub type QueuedAudioSourceResult =
-    Result<QueuedAudioSource<Box<dyn Source + Send + 'static>>, String>;
+pub enum QueuedAudioSourceState<T> {
+    Ok(T),
+    Pending,
+    Err(String),
+}
 
 //==================================================================================================
 // QueuedAudioSourceFromPosition
@@ -117,8 +121,16 @@ pub type QueuedAudioSourceResult =
 /// # Convenient functions in [`QueuedAudioSource`] to apply or restore the playback position:
 /// - [`QueuedAudioSource::seek_or_skip_duration()`]
 /// - [`QueuedAudioSource::seek_or_skip_duration_looped()`]
-pub type QueuedAudioSourceFromPosition =
-    Box<dyn FnMut(Duration) -> QueuedAudioSourceResult + Send + Sync + 'static>;
+pub type QueuedAudioSourceFromPosition = Box<
+    dyn FnMut(
+            &Assets<AudioSource>,
+            Duration,
+        )
+            -> QueuedAudioSourceState<QueuedAudioSource<Box<dyn Source + Send + 'static>>>
+        + Send
+        + Sync
+        + 'static,
+>;
 
 //==================================================================================================
 // AudioPlayer
@@ -129,6 +141,7 @@ pub struct AudioPlayer {
     player: Option<Player>,
     queue: Vec<QueuedAudioSourceFromPosition>,
     try_seek: Duration,
+    in_player_queue: usize,
     volume: f32,
     speed: f32,
     is_paused: bool,
@@ -141,6 +154,7 @@ impl Default for AudioPlayer {
             player: None,
             queue: Vec::new(),
             try_seek: Duration::ZERO,
+            in_player_queue: 0,
             volume: 1.0,
             speed: 1.0,
             is_paused: false,
@@ -150,8 +164,12 @@ impl Default for AudioPlayer {
 }
 
 impl AudioPlayer {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(audio_source: Handle<AudioSource>) -> Self {
+        Self::default().with_append_audio_source(audio_source)
+    }
+
+    pub fn new_looped(audio_source: Handle<AudioSource>) -> Self {
+        Self::default().with_append_audio_source_looped(audio_source)
     }
 
     pub(super) fn connect(&mut self, mixer: &Mixer) {
@@ -162,26 +180,21 @@ impl AudioPlayer {
 
         let player = Player::connect_new(mixer);
 
-        if self.is_paused {
-            player.pause();
-        }
         player.set_volume(self.volume);
         player.set_speed(self.speed);
 
-        for (idx, load_source) in self.queue.iter_mut().enumerate() {
-            let position = if idx == 0 {
-                self.try_seek
+        let should_play = !self.is_paused && !self.is_paused_by_suspend;
+        if should_play != !player.is_paused() {
+            if should_play {
+                player.play();
             } else {
-                Duration::ZERO
-            };
-
-            match load_source(position) {
-                Ok(queued_source) => player.append(queued_source.source),
-                Err(e) => error!("Failed to load source: {e}"),
+                player.pause();
             }
         }
 
         self.player = Some(player);
+
+        self.sync_queue_with_player();
     }
 
     pub(super) fn disconnect(&mut self) {
@@ -189,17 +202,17 @@ impl AudioPlayer {
             return;
         }
 
-        self.update();
+        self.sync_queue_with_player();
 
         // TAKE!!!
         let Some(player) = self.player.take() else {
             return;
         };
 
-        self.try_seek += player.get_pos();
+        self.is_paused = player.is_paused();
         self.volume = player.volume();
         self.speed = player.speed();
-        self.is_paused = player.is_paused();
+        self.try_seek += player.get_pos();
     }
 
     pub(super) fn is_connected(&self) -> bool {
@@ -207,6 +220,8 @@ impl AudioPlayer {
     }
 
     pub(super) fn on_resume(&mut self) {
+        self.sync_queue_with_player();
+
         if self.is_paused_by_suspend() {
             self.play();
         }
@@ -214,26 +229,59 @@ impl AudioPlayer {
     }
 
     pub(super) fn on_suspend(&mut self) {
+        self.sync_queue_with_player();
+
         if self.is_playing() {
             self.pause();
-
             // Must set this flag after calling `self.pause()`,
             // because `pause()` resets it to false.
             self.is_paused_by_suspend = true;
         }
     }
 
-    pub(super) fn update(&mut self) {
+    pub(super) fn update(&mut self, audio_sources: &Assets<AudioSource>) {
+        self.sync_queue_with_player();
+
+        let Some(player) = self.player.as_ref() else {
+            return;
+        };
+
+        if self.in_player_queue < self.queue.len() {
+            for (idx, load_source) in self.queue.iter_mut().skip(self.in_player_queue).enumerate() {
+                let position = if idx == 0 {
+                    self.try_seek
+                } else {
+                    Duration::ZERO
+                };
+
+                match load_source(audio_sources, position) {
+                    QueuedAudioSourceState::Ok(s) => {
+                        player.append(s.source);
+                        self.in_player_queue += 1;
+                    }
+                    QueuedAudioSourceState::Pending => break,
+                    QueuedAudioSourceState::Err(e) => error!("Failed to load source: {e}"),
+                }
+            }
+        }
+    }
+
+    fn sync_queue_with_player(&mut self) {
         let Some(player) = self.player.as_ref() else {
             return;
         };
 
         let player_queue_len = player.len();
-        let queue_len = self.queue.len();
-
-        if player_queue_len < queue_len {
-            let to_remove = queue_len - player_queue_len;
+        debug_assert!(
+            self.in_player_queue >= player_queue_len,
+            "Player queue sync bug"
+        );
+        let already_played = self.in_player_queue.saturating_sub(player_queue_len);
+        debug_assert!(self.queue.len() >= already_played, "Player queue sync bug");
+        let to_remove = already_played.min(self.queue.len());
+        if to_remove > 0 {
             self.queue.drain(0..to_remove);
+            self.in_player_queue = self.in_player_queue.saturating_sub(already_played);
             self.try_seek = Duration::ZERO;
         }
     }
@@ -241,7 +289,10 @@ impl AudioPlayer {
     /// See [`Self::append`] for more info.
     pub fn with_append<F, S>(mut self, load_source: F) -> Self
     where
-        F: FnMut(Duration) -> Result<QueuedAudioSource<S>, String> + Send + Sync + 'static,
+        F: FnMut(&Assets<AudioSource>, Duration) -> QueuedAudioSourceState<QueuedAudioSource<S>>
+            + Send
+            + Sync
+            + 'static,
         S: Source + Send + 'static,
     {
         self.append(load_source);
@@ -252,99 +303,150 @@ impl AudioPlayer {
     /// See [`QueuedAudioSourceFromPosition`] for more info.
     pub fn append<F, S>(&mut self, mut load_source: F)
     where
-        F: FnMut(Duration) -> Result<QueuedAudioSource<S>, String> + Send + Sync + 'static,
+        F: FnMut(&Assets<AudioSource>, Duration) -> QueuedAudioSourceState<QueuedAudioSource<S>>
+            + Send
+            + Sync
+            + 'static,
         S: Source + Send + 'static,
     {
-        self.update();
-
-        if let Some(player) = self.player.as_ref() {
-            match load_source(Duration::ZERO) {
-                Ok(queued_source) => player.append(queued_source.source),
-                Err(e) => error!("Failed to load source: {e}"),
-            }
-        }
-
-        self.queue.push(Box::new(move |position| {
-            load_source(position).map(|queued_source| {
-                let QueuedAudioSource {
-                    source,
-                    total_duration,
-                } = queued_source;
-
-                QueuedAudioSource {
-                    source: Box::new(source) as Box<dyn Source + Send + 'static>,
-                    total_duration,
+        self.queue.push(Box::new(move |audio_sources, position| {
+            match load_source(audio_sources, position) {
+                QueuedAudioSourceState::Ok(s) => {
+                    let QueuedAudioSource {
+                        source,
+                        total_duration,
+                    } = s;
+                    QueuedAudioSourceState::Ok(QueuedAudioSource {
+                        source: Box::new(source) as Box<dyn Source + Send + 'static>,
+                        total_duration,
+                    })
                 }
-            })
+                QueuedAudioSourceState::Pending => QueuedAudioSourceState::Pending,
+                QueuedAudioSourceState::Err(e) => QueuedAudioSourceState::Err(e),
+            }
         }));
     }
 
-    pub fn with_append_audio_source(mut self, audio_source: AudioSource) -> Self {
+    pub fn with_append_audio_source(mut self, audio_source: Handle<AudioSource>) -> Self {
         self.append_audio_source(audio_source);
         self
     }
 
-    pub fn append_audio_source(&mut self, audio_source: AudioSource) {
-        self.append(move |position| {
-            audio_source.create_decoder().map(|decoder| {
-                QueuedAudioSource {
-                    source: decoder,
-                    total_duration: audio_source.total_duration(),
-                }
-                .seek_or_skip_duration(position)
-            })
+    pub fn append_audio_source(&mut self, audio_source: Handle<AudioSource>) {
+        self.append(move |audio_sources, position| {
+            let Some(audio_source) = audio_sources.get(&audio_source) else {
+                return QueuedAudioSourceState::Pending;
+            };
+
+            match audio_source.create_decoder() {
+                Ok(decoder) => QueuedAudioSourceState::Ok(
+                    QueuedAudioSource {
+                        source: decoder,
+                        total_duration: audio_source.total_duration(),
+                    }
+                    .seek_or_skip_duration(position),
+                ),
+                Err(e) => QueuedAudioSourceState::Err(e),
+            }
         });
     }
 
-    pub fn with_append_audio_source_looped(mut self, audio_source: AudioSource) -> Self {
+    pub fn with_append_audio_sources<I, H>(mut self, audio_sources: I) -> Self
+    where
+        I: IntoIterator<Item = H>,
+        H: Into<Handle<AudioSource>>,
+    {
+        self.append_audio_sources(audio_sources);
+        self
+    }
+
+    pub fn append_audio_sources<I, H>(&mut self, audio_sources: I)
+    where
+        I: IntoIterator<Item = H>,
+        H: Into<Handle<AudioSource>>,
+    {
+        for audio_source in audio_sources {
+            self.append_audio_source(audio_source.into());
+        }
+    }
+
+    pub fn with_append_audio_source_looped(mut self, audio_source: Handle<AudioSource>) -> Self {
         self.append_audio_source_looped(audio_source);
         self
     }
 
-    pub fn append_audio_source_looped(&mut self, audio_source: AudioSource) {
-        self.append(move |position| {
-            audio_source.create_decoder_looped().map(|decoder| {
-                QueuedAudioSource {
-                    source: decoder,
-                    total_duration: audio_source.total_duration(),
-                }
-                .seek_or_skip_duration_looped(position)
-            })
+    pub fn append_audio_source_looped(&mut self, audio_source: Handle<AudioSource>) {
+        self.append(move |audio_sources, position| {
+            let Some(audio_source) = audio_sources.get(&audio_source) else {
+                return QueuedAudioSourceState::Pending;
+            };
+
+            match audio_source.create_decoder_looped() {
+                Ok(decoder) => QueuedAudioSourceState::Ok(
+                    QueuedAudioSource {
+                        source: decoder,
+                        total_duration: audio_source.total_duration(),
+                    }
+                    .seek_or_skip_duration_looped(position),
+                ),
+                Err(e) => QueuedAudioSourceState::Err(e),
+            }
         });
+    }
+
+    pub fn with_append_audio_sources_looped<I, H>(mut self, audio_sources: I) -> Self
+    where
+        I: IntoIterator<Item = H>,
+        H: Into<Handle<AudioSource>>,
+    {
+        self.append_audio_sources_looped(audio_sources);
+        self
+    }
+
+    pub fn append_audio_sources_looped<I, H>(&mut self, audio_sources: I)
+    where
+        I: IntoIterator<Item = H>,
+        H: Into<Handle<AudioSource>>,
+    {
+        for audio_source in audio_sources {
+            self.append_audio_source_looped(audio_source.into());
+        }
     }
 
     pub fn clear(&mut self) {
         if let Some(player) = self.player.as_ref() {
             player.clear();
         }
+        self.in_player_queue = 0;
 
         self.queue.clear();
-
-        if self.is_paused() {
-            self.is_paused_by_suspend = false;
-        }
     }
 
     pub fn len(&self) -> usize {
         if let Some(player) = self.player.as_ref() {
-            player.len()
+            let player_queue_len = player.len();
+            debug_assert!(
+                self.in_player_queue >= player_queue_len,
+                "Player queue sync bug"
+            );
+            let already_played = self.in_player_queue.saturating_sub(player_queue_len);
+            self.queue.len().saturating_sub(already_played)
         } else {
             self.queue.len()
         }
     }
 
     pub fn is_empty(&self) -> bool {
-        if let Some(player) = self.player.as_ref() {
-            player.empty()
-        } else {
-            self.queue.is_empty()
-        }
+        self.len() == 0
     }
 
     pub fn skip_one(&mut self) {
         if let Some(player) = self.player.as_ref() {
             player.skip_one();
-        } else if !self.queue.is_empty() {
+        }
+        self.in_player_queue = self.in_player_queue.saturating_sub(1);
+
+        if !self.queue.is_empty() {
             let _ = self.queue.remove(0);
         }
     }
@@ -357,9 +459,8 @@ impl AudioPlayer {
     pub fn set_volume(&mut self, volume: f32) {
         if let Some(player) = self.player.as_ref() {
             player.set_volume(volume);
-        } else {
-            self.volume = volume;
         }
+        self.volume = volume;
     }
 
     pub fn volume(&self) -> f32 {
@@ -378,9 +479,8 @@ impl AudioPlayer {
     pub fn set_speed(&mut self, speed: f32) {
         if let Some(player) = self.player.as_ref() {
             player.set_speed(speed);
-        } else {
-            self.speed = speed;
         }
+        self.speed = speed;
     }
 
     pub fn speed(&self) -> f32 {
@@ -394,6 +494,7 @@ impl AudioPlayer {
     pub fn play(&mut self) {
         if let Some(player) = self.player.as_ref() {
             player.play();
+            self.is_paused = player.is_paused();
         } else {
             self.is_paused = false;
         }
@@ -413,6 +514,7 @@ impl AudioPlayer {
     pub fn pause(&mut self) {
         if let Some(player) = self.player.as_ref() {
             player.pause();
+            self.is_paused = player.is_paused();
         } else {
             self.is_paused = true;
         }
@@ -448,11 +550,11 @@ impl AudioPlayer {
     }
 
     pub fn get_position(&mut self) -> Duration {
-        self.update();
+        self.sync_queue_with_player();
 
-        match self.player.as_ref() {
-            Some(player) => self.try_seek + player.get_pos(),
-            None => self.try_seek,
-        }
+        self.player
+            .as_ref()
+            .map(|player| self.try_seek + player.get_pos())
+            .unwrap_or(self.try_seek)
     }
 }

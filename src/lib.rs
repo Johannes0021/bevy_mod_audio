@@ -23,7 +23,7 @@ pub mod prelude {
             AudioContextErrorCallback, AudioContextRebuild,
         },
         audio_player::{
-            AudioPlayer, QueuedAudioSource, QueuedAudioSourceFromPosition, QueuedAudioSourceResult,
+            AudioPlayer, QueuedAudioSource, QueuedAudioSourceFromPosition, QueuedAudioSourceState,
         },
         audio_source::{AudioLoader, AudioSource},
     };
@@ -89,6 +89,7 @@ fn on_lifecycle(
 fn update(
     time: Res<Time>,
     mut audio_context: ResMut<AudioContext>,
+    audio_sources: Res<Assets<AudioSource>>,
     mut audio_players: Query<&mut AudioPlayer>,
     mut init_rebuild_done: Local<bool>,
 ) {
@@ -101,7 +102,7 @@ fn update(
         {
             audio_player.connect(mixer);
         }
-        audio_player.update();
+        audio_player.update(&audio_sources);
     }
 
     if audio_context.needs_rebuild(delta) {

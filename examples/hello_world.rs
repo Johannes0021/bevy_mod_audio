@@ -19,11 +19,13 @@ fn main() {
 }
 
 fn startup(mut commands: Commands) {
-    // There are also fns for playing audio from a file.
+    // One way to play from file:
+    //commands.spawn(AudioPlayer::new(asset_server.load("some_path_to_music.ogg")));
+
     // The example below is expensive to rebuild because it is not seekable (it skips the duration).
     // It makes sense to omit seek_or_skip_duration.
     // Sources that are seekable are much faster to rebuild.
-    commands.spawn(AudioPlayer::new().with_append(|position| {
+    commands.spawn(AudioPlayer::default().with_append(|_, position| {
         // Construct a dynamic controller and mixer.
         let (controller, mixer) = mixer::mixer(
             ChannelCount::new(2).unwrap(),
@@ -62,6 +64,6 @@ fn startup(mut commands: Commands) {
         // See comment above.
         .seek_or_skip_duration(position);
 
-        Ok(queued_source)
+        QueuedAudioSourceState::Ok(queued_source)
     }));
 }
