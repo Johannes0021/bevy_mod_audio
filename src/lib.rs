@@ -94,7 +94,10 @@ fn update(
             error!("Failed to rebuild the audio context: {e}");
         }
     }
-    *log_init_rebuild = true;
+
+    if !*log_init_rebuild {
+        *log_init_rebuild = audio_context.is_connected();
+    }
 
     let mixer = audio_context.mixer();
     for mut audio_player in &mut audio_players {

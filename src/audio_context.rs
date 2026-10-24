@@ -292,7 +292,7 @@ impl AudioContext {
         self.needs_rebuild.store(false, Ordering::SeqCst);
     }
 
-    fn is_connected(&self) -> bool {
+    pub(super) fn is_connected(&self) -> bool {
         self.mixer_device_sink.is_some()
     }
 }
