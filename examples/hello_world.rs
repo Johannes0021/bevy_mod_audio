@@ -20,6 +20,9 @@ fn main() {
 
 fn startup(mut commands: Commands) {
     // There are also fns for playing audio from a file.
+    // The example below is expensive to rebuild because it is not seekable (it skips the duration).
+    // It makes sense to omit seek_or_skip_duration.
+    // Sources that are seekable are much faster to rebuild.
     commands.spawn(AudioPlayer::new().with_append(|position| {
         // Construct a dynamic controller and mixer.
         let (controller, mixer) = mixer::mixer(
@@ -55,6 +58,8 @@ fn startup(mut commands: Commands) {
             total_duration: Some(NOTE_DURATION),
         }
         // This is important for the audio context rebuild.
+        // This source is not seekable (it skips the duration) which is expesive.
+        // See comment above.
         .seek_or_skip_duration(position);
 
         Ok(queued_source)
