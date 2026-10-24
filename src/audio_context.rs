@@ -30,7 +30,7 @@ pub enum AudioContextConnectionError {
 
 impl AudioContextConnectionError {
     fn default_error_callback(self) {
-        error!("AudioContext error:\n\n{:#?}", self);
+        error!("AudioContext error:\n{:#?}", self);
     }
 }
 
