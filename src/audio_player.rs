@@ -66,8 +66,8 @@ impl Default for AudioPlayer {
 }
 
 impl AudioPlayer {
-    pub fn new(audio_source: Handle<AudioFile>) -> Self {
-        Self::default().with_append(audio_source)
+    pub fn new(source: impl Into<QueuedAudioSource>) -> Self {
+        Self::default().with_append(source)
     }
 
     //pub fn new_looped(audio_source: Handle<AudioFile>) -> Self {

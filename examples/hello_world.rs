@@ -50,5 +50,5 @@ fn startup(mut commands: Commands) {
     controller.add(source_g);
     controller.add(source_a);
 
-    commands.spawn(AudioPlayer::default().with_append(Box::new(mixer)));
+    commands.spawn(AudioPlayer::new(Box::new(mixer)));
 }
