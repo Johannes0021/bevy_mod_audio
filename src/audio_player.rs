@@ -79,7 +79,7 @@ where
             return self;
         };
 
-        if position == Duration::ZERO {
+        if position.is_zero() {
             return self;
         }
 
@@ -336,13 +336,18 @@ impl AudioPlayer {
             };
 
             match audio_source.create_decoder() {
-                Ok(decoder) => QueuedAudioSourceState::Ok(
-                    QueuedAudioSource {
+                Ok(decoder) => QueuedAudioSourceState::Ok({
+                    let queued_audio_source = QueuedAudioSource {
                         source: decoder,
                         total_duration: audio_source.total_duration(),
+                    };
+
+                    if position.is_zero() {
+                        queued_audio_source
+                    } else {
+                        queued_audio_source.seek_or_skip_duration(position)
                     }
-                    .seek_or_skip_duration(position),
-                ),
+                }),
                 Err(e) => QueuedAudioSourceState::Err(e),
             }
         });
@@ -379,13 +384,18 @@ impl AudioPlayer {
             };
 
             match audio_source.create_decoder_looped() {
-                Ok(decoder) => QueuedAudioSourceState::Ok(
-                    QueuedAudioSource {
+                Ok(decoder) => QueuedAudioSourceState::Ok({
+                    let queued_audio_source = QueuedAudioSource {
                         source: decoder,
                         total_duration: audio_source.total_duration(),
+                    };
+
+                    if position.is_zero() {
+                        queued_audio_source
+                    } else {
+                        queued_audio_source.seek_or_skip_duration_looped(position)
                     }
-                    .seek_or_skip_duration_looped(position),
-                ),
+                }),
                 Err(e) => QueuedAudioSourceState::Err(e),
             }
         });
