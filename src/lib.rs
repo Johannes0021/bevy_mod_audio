@@ -3,8 +3,8 @@ pub use rodio;
 use bevy_ecs::prelude::*;
 
 use audio_context::{AudioContext, AudioContextDescriptor};
+use audio_file::{AudioFile, AudioFileLoader};
 use audio_player::AudioPlayer;
-use audio_source::{AudioLoader, AudioSource};
 use bevy_app::prelude::*;
 use bevy_asset::prelude::*;
 use bevy_log::prelude::*;
@@ -12,8 +12,9 @@ use bevy_time::prelude::*;
 use bevy_window::AppLifecycle;
 
 pub mod audio_context;
+pub mod audio_file;
 pub mod audio_player;
-pub mod audio_source;
+pub mod source_recovery;
 
 pub mod prelude {
     pub use super::{
@@ -22,10 +23,8 @@ pub mod prelude {
             AudioContext, AudioContextConnectionError, AudioContextDescriptor, AudioContextDevice,
             AudioContextErrorCallback, AudioContextRebuild,
         },
-        audio_player::{
-            AudioPlayer, QueuedAudioSource, QueuedAudioSourceFromPosition, QueuedAudioSourceState,
-        },
-        audio_source::{AudioLoader, AudioSource},
+        audio_file::AudioFile,
+        audio_player::{AudioPlayer, QueuedAudioSource},
     };
 }
 
@@ -39,13 +38,13 @@ pub struct AudioPlugin {
 
 impl Plugin for AudioPlugin {
     fn build(&self, app: &mut App) {
-        app.init_asset::<AudioSource>()
+        app.init_asset::<AudioFile>()
             .insert_resource(AudioContext::new(self.audio_context_descriptor.clone()))
             .add_systems(PostUpdate, update.in_set(AudioSystems));
 
         #[cfg(any(feature = "mp3", feature = "flac", feature = "wav", feature = "vorbis"))]
         {
-            app.init_asset_loader::<AudioLoader>();
+            app.init_asset_loader::<AudioFileLoader>();
         }
     }
 }
@@ -53,7 +52,7 @@ impl Plugin for AudioPlugin {
 fn update(
     time: Res<Time>,
     mut audio_context: ResMut<AudioContext>,
-    audio_sources: Res<Assets<AudioSource>>,
+    audio_files: Res<Assets<AudioFile>>,
     mut audio_players: Query<&mut AudioPlayer>,
     mut lifecycle_messages: MessageReader<AppLifecycle>,
     mut running: Local<bool>,
@@ -106,6 +105,6 @@ fn update(
         {
             audio_player.connect(mixer);
         }
-        audio_player.update(&audio_sources);
+        audio_player.update(&audio_files);
     }
 }
