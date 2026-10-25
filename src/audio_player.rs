@@ -18,7 +18,10 @@ pub enum QueuedAudioSource {
     // Rodio sources don't require Sync.
     // I don't know of a better way right now.
     Any(Mutex<Box<dyn Source + Send + 'static>>),
-    File(Handle<AudioFile>),
+    File {
+        handle: Handle<AudioFile>,
+        looped: bool,
+    },
 }
 
 impl<S> From<Box<S>> for QueuedAudioSource
@@ -32,7 +35,10 @@ where
 
 impl From<Handle<AudioFile>> for QueuedAudioSource {
     fn from(source: Handle<AudioFile>) -> Self {
-        Self::File(source)
+        Self::File {
+            handle: source,
+            looped: false,
+        }
     }
 }
 
@@ -72,9 +78,9 @@ impl AudioPlayer {
         Self::default().with_append(source)
     }
 
-    //pub fn new_looped(audio_source: Handle<AudioFile>) -> Self {
-    //    Self::default().with_append_audio_source_looped(audio_source)
-    //}
+    pub fn new_file_looped(file: Handle<AudioFile>) -> Self {
+        Self::default().with_append_file_looped(file)
+    }
 
     pub(super) fn connect(&mut self, mixer: &Mixer) {
         if self.is_connected() {
@@ -164,15 +170,22 @@ impl AudioPlayer {
         while let Some(queued_source) = self.pending_sources.pop_front() {
             let source = match queued_source {
                 QueuedAudioSource::Any(source) => Ok(source.into_inner().unwrap()),
-                QueuedAudioSource::File(file) => {
-                    let Some(audio_file) = audio_files.get(&file) else {
+                QueuedAudioSource::File { handle, looped } => {
+                    let Some(audio_file) = audio_files.get(&handle) else {
                         self.pending_sources
-                            .push_front(QueuedAudioSource::File(file));
+                            .push_front(QueuedAudioSource::File { handle, looped });
                         break;
                     };
 
                     let cursor = Cursor::new(audio_file.clone());
-                    Decoder::new(cursor).map(|d| Box::new(d) as Box<dyn Source + Send + 'static>)
+
+                    if looped {
+                        Decoder::new_looped(cursor)
+                            .map(|d| Box::new(d) as Box<dyn Source + Send + 'static>)
+                    } else {
+                        Decoder::new(cursor)
+                            .map(|d| Box::new(d) as Box<dyn Source + Send + 'static>)
+                    }
                 }
             };
 
@@ -224,6 +237,18 @@ impl AudioPlayer {
         self.pending_sources.push_back(source.into());
     }
 
+    pub fn with_append_file_looped(mut self, file: Handle<AudioFile>) -> Self {
+        self.append_file_looped(file);
+        self
+    }
+
+    pub fn append_file_looped(&mut self, file: Handle<AudioFile>) {
+        self.append(QueuedAudioSource::File {
+            handle: file,
+            looped: true,
+        });
+    }
+
     pub fn with_append_iter<I, S>(mut self, sources: I) -> Self
     where
         I: IntoIterator<Item = S>,
@@ -240,6 +265,25 @@ impl AudioPlayer {
     {
         self.pending_sources
             .extend(sources.into_iter().map(Into::into))
+    }
+
+    pub fn with_append_files_looped<I>(mut self, files: I) -> Self
+    where
+        I: IntoIterator<Item = Handle<AudioFile>>,
+    {
+        self.append_files_looped(files);
+        self
+    }
+
+    pub fn append_files_looped<I>(&mut self, files: I)
+    where
+        I: IntoIterator<Item = Handle<AudioFile>>,
+    {
+        self.pending_sources
+            .extend(files.into_iter().map(|handle| QueuedAudioSource::File {
+                handle,
+                looped: true,
+            }))
     }
 
     /// Removes all currently loaded `Source`s from the `Player`, and pauses it.
