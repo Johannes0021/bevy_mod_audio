@@ -41,38 +41,39 @@ where
     }
 
     pub fn seek_or_skip_duration_looped(mut self, position: Duration) -> Self {
-        let seek_position = if let Some(total_duration) = self.total_duration() {
-            if position > total_duration {
-                let target_nanos = position.as_nanos();
-                let loop_nanos = total_duration.as_nanos();
-                let seek_nanos = target_nanos % loop_nanos;
+        let seek_position = self
+            .total_duration()
+            .and_then(|total_duration| {
+                if position > total_duration {
+                    let target_nanos = position.as_nanos();
+                    let loop_nanos = total_duration.as_nanos();
+                    let seek_nanos = target_nanos % loop_nanos;
 
-                const NANOS_PER_SEC: u128 = 1_000_000_000;
+                    const NANOS_PER_SEC: u128 = 1_000_000_000;
 
-                let secs = seek_nanos / NANOS_PER_SEC;
-                let nanos = (seek_nanos % NANOS_PER_SEC) as u32;
+                    let secs = seek_nanos / NANOS_PER_SEC;
+                    let nanos = (seek_nanos % NANOS_PER_SEC) as u32;
 
-                match u64::try_from(secs) {
-                    Ok(secs_u64) => Duration::new(secs_u64, nanos),
-                    Err(_) => {
-                        warn!(
-                            "Duration exceeds u64::MAX seconds, falling back to f64. \
+                    Some(match u64::try_from(secs) {
+                        Ok(secs_u64) => Duration::new(secs_u64, nanos),
+                        Err(_) => {
+                            warn!(
+                                "Duration exceeds u64::MAX seconds, falling back to f64. \
                              Precision may be lost for very large durations."
-                        );
+                            );
 
-                        let target_secs = position.as_secs_f64();
-                        let loop_secs = total_duration.as_secs_f64();
-                        let seek_secs = target_secs % loop_secs;
+                            let target_secs = position.as_secs_f64();
+                            let loop_secs = total_duration.as_secs_f64();
+                            let seek_secs = target_secs % loop_secs;
 
-                        Duration::from_secs_f64(seek_secs)
-                    }
+                            Duration::from_secs_f64(seek_secs)
+                        }
+                    })
+                } else {
+                    None
                 }
-            } else {
-                position
-            }
-        } else {
-            position
-        };
+            })
+            .unwrap_or(position);
 
         let Err(seek_err) = self.source.try_seek(seek_position) else {
             return self;
