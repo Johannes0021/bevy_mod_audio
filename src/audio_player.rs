@@ -380,11 +380,10 @@ impl AudioPlayer {
     //}
 
     pub fn get_position(&mut self) -> Duration {
-        self.cleanup_finished_sources();
-
         if let Some(player) = self.player.as_ref() {
             player.get_pos()
         } else {
+            self.cleanup_finished_sources();
             self.last_connected_position
         }
     }
