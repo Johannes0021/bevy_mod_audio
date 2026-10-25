@@ -5,7 +5,7 @@ use super::{
 use bevy_asset::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::prelude::*;
-use rodio::{Decoder, Player, Source, mixer::Mixer, source::SeekError};
+use rodio::{Decoder, Player, Source, mixer::Mixer};
 use std::{collections::VecDeque, io::Cursor, mem, sync::Mutex, time::Duration};
 
 //==================================================================================================

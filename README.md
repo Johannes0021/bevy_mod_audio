@@ -8,6 +8,11 @@ https://github.com/bevyengine/bevy/issues/26282
     - Resolved in this plugin
     - Downside: Tear down full audio backend on suspend and rebuild on resume
 
+# TODO
+- AudioPlayer::try_seek impl
+- It would be convenient if one could set conditions on the AudioPlayer when the queue is emptied
+  like: DespawnEntity, RemoveComponent, ...
+
 # Usage
 Disable the `audio` feature in bevy and add this `AudioPlugin` instead.
 
