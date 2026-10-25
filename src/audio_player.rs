@@ -41,9 +41,8 @@ where
     }
 
     pub fn seek_or_skip_duration_looped(mut self, position: Duration) -> Self {
-        // --- Attempt 1: Loop-aware seek (position modulo total duration) ---
-        if let Some(total_duration) = self.total_duration() {
-            let seek_pos = if position > total_duration {
+        let seek_position = if let Some(total_duration) = self.total_duration() {
+            if position > total_duration {
                 let target_nanos = position.as_nanos();
                 let loop_nanos = total_duration.as_nanos();
                 let seek_nanos = target_nanos % loop_nanos;
@@ -70,19 +69,15 @@ where
                 }
             } else {
                 position
-            };
-
-            if self.source.try_seek(seek_pos).is_ok() {
-                return self;
             }
-        }
+        } else {
+            position
+        };
 
-        // --- Attempt 2: Direct seek ---
-        let Err(seek_err) = self.source.try_seek(position) else {
+        let Err(seek_err) = self.source.try_seek(seek_position) else {
             return self;
         };
 
-        // --- Attempt 3: Fallback to skip_duration ---
         if position == Duration::ZERO {
             return self;
         }
