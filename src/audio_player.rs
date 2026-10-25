@@ -234,9 +234,8 @@ impl AudioPlayer {
         I: IntoIterator<Item = S>,
         S: Into<QueuedAudioSource>,
     {
-        for source in sources {
-            self.pending_sources.push_back(source.into());
-        }
+        self.pending_sources
+            .extend(sources.into_iter().map(Into::into))
     }
 
     /// Removes all currently loaded `Source`s from the `Player`, and pauses it.
