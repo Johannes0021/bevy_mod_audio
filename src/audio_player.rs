@@ -45,6 +45,7 @@ pub struct AudioPlayer {
     player: Option<Player>,
     pending_sources: VecDeque<QueuedAudioSource>,
     source_recoveries: Vec<SourceRecovery>,
+    last_connected_position: Duration,
     volume: f32,
     speed: f32,
     is_paused: bool,
@@ -57,6 +58,7 @@ impl Default for AudioPlayer {
             player: None,
             pending_sources: VecDeque::new(),
             source_recoveries: Vec::new(),
+            last_connected_position: Duration::ZERO,
             volume: 1.0,
             speed: 1.0,
             is_paused: false,
@@ -127,6 +129,7 @@ impl AudioPlayer {
         self.is_paused = player.is_paused();
         self.volume = player.volume();
         self.speed = player.speed();
+        self.last_connected_position += player.get_pos();
     }
 
     pub(super) fn is_connected(&self) -> bool {
@@ -208,6 +211,7 @@ impl AudioPlayer {
         let to_remove = already_played.min(self.source_recoveries.len());
         if to_remove > 0 {
             self.source_recoveries.drain(0..to_remove);
+            self.last_connected_position = Duration::ZERO;
         }
     }
 
@@ -375,11 +379,13 @@ impl AudioPlayer {
     //    }
     //}
 
-    //pub fn get_position(&mut self) -> Duration {
-    //    if let Some(player) = self.player.as_ref() {
-    //        player.get_pos()
-    //    } else {
-    //        self.recovery_position
-    //    }
-    //}
+    pub fn get_position(&mut self) -> Duration {
+        self.cleanup_finished_sources();
+
+        if let Some(player) = self.player.as_ref() {
+            player.get_pos()
+        } else {
+            self.last_connected_position
+        }
+    }
 }
